@@ -218,13 +218,14 @@ function onNotification(data, req) {
             }
         } else if(groupId) {
             if(connectionId) {
-                axios.delete(`${config.webStreamer.SERVER}/muti-points/endpoint`, {
+                axiosWebStreamer.updateMemberNameIdMap(groupId, connectionId);
+/*                axios.delete(`${config.webStreamer.SERVER}/muti-points/endpoint`, {
                     id: groupId,
                     endpoint: [connectionId]
                 });
-                axios.delete(`${config.webStreamer.SERVER}/muti-points?id=${groupId}`);
+                axios.delete(`${config.webStreamer.SERVER}/muti-points?id=${groupId}`);*/
             } else {
-                let group = groupManager.getGroup(groupId),
+/*                let group = groupManager.getGroup(groupId),
                     endpoint = [];
 
                 for(let [key, value] of group.entries()) {
@@ -235,7 +236,7 @@ function onNotification(data, req) {
                     id: groupId,
                     endpoint: endpoint
                 });
-                axios.delete(`${config.webStreamer.SERVER}/muti-points?id=${groupId}`);
+                axios.delete(`${config.webStreamer.SERVER}/muti-points?id=${groupId}`);*/
             }
         }
     }

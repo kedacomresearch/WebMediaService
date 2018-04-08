@@ -9,6 +9,7 @@ const groupManager = require('../../util/groupManager');
 const sessionManager = require('../../util/sessionManager');
 
 let streamEndpointMap = new Map();
+let memberNameIdMap = new Map();
 
 function addStreamEndpointPair(streamId, endpointId) {
     if(!streamEndpointMap.get(streamId)) {
@@ -252,16 +253,49 @@ async function removeLiveStreamViewer(ctx, next) {
     ctx.statusMessage = res.statusText;
 }
 
+//程序起来后自动生成三个group，用于测试
+let group = [
+    {
+        id: 251,
+        name: 'audio group',
+        topic: 'audio',
+        media: 'audio'
+    },
+    {
+        id: 252,
+        name: 'video group',
+        topic: 'video',
+        media: 'video'
+    },
+    {
+        id: 253,
+        name: 'audiovideo group',
+        topic: 'audiovideo',
+        media: 'audiovideo'
+    }
+];
+for (let [index, item] of group.entries()) {
+    axiosSignalingBridge.createGroup(item.id);
+    axios.post(`${config.webStreamer.SERVER}/muti-points?id=${item.id}`);
+    groupManager.createGroup(item.id, item.name, item.media, item.topic)
+}
+
+
 async function createMultiPoint(ctx, next) {
-    let multiPointId = idGenerator.getId();
+    let multiPointId = idGenerator.getId(),
+        body = ctx.request.body;
 
     let res = await axiosSignalingBridge.createGroup(multiPointId);
 
     if(res.status === 200) {
         res = await axios.post(`${config.webStreamer.SERVER}/muti-points?id=${multiPointId}`);
         if(res.status === 200) {
-            sessionManager.createSession(multiPointId, ctx.request.body.title, ctx.request.body.desc, 'multi');
-            groupManager.createGroup(multiPointId);
+            sessionManager.createSession(multiPointId, body.groupName, body.topic, 'multi');
+            if(!groupManager.createGroup(multiPointId, body.groupName, body.media, body.topic)) {
+                axiosSignalingBridge.destroyGroup(multiPointId);
+                ctx.status = 400;
+                ctx.statusMessage = 'group already exists';
+            }
             ctx.body = {groupId: multiPointId};
         } else {
             res = await axiosSignalingBridge.destroyGroup(multiPointId);
@@ -294,6 +328,13 @@ async function deleteMultiPoint(ctx, next) {
     //ctx.statusMessage = res.statusText;
 }
 
+function updateMemberNameIdMap(groupId, endpointId) {
+    let memberName = memberNameIdMap.get(endpointId.toString());
+    groupManager.getGroup(groupId).deleteMember(memberName);
+}
+
+module.exports.updateMemberNameIdMap = updateMemberNameIdMap;
+
 async function addMultiPointEndpoint(ctx, next) {
     let postBody = ctx.request.body;
     let groupId = postBody.groupId,
@@ -305,15 +346,21 @@ async function addMultiPointEndpoint(ctx, next) {
         returnedEndpointArray = [], returnedObj = {};
 
     for(let [index, item] of endpoint.entries()) {
-        member = groupManager.getMember(groupId, item.name);
-        endpointId = member.id;
+        endpointId = idGenerator.getId();
+        if(!group.addMember(item.name, item.type, false)) {
+            ctx.status = 400;
+            ctx.statusMessage = 'member name already existed';
+            return;
+        }
+        memberNameIdMap.set(endpointId.toString(), item.name);
         obj.ID = endpointId.toString();
-        returnedObj.Id = endpointId;
-        returnedObj.name = member.name;
 
-        if(item.type === 'rtsp') {
+        returnedObj.Id = endpointId;
+        returnedObj.name = item.name;
+
+        if(item.type.toLowerCase() === 'rtsp') {
             obj.RTSPClient.url = item.options.rtsp.url;
-        } else if(item.type === 'webrtc') {
+        } else if(item.type.toLowerCase() === 'webrtc') {
             let res = await axiosSignalingBridge.createPeerConnection(endpointId,groupId);
             if(res.status === 200) {
                 obj.WebRTC = {
@@ -372,16 +419,21 @@ async function removeMultiPointEndpoint(ctx, next) {
     let groupId = ctx.request.body.groupId,
         endpointId = ctx.request.body.endpointId;
 
-    for(let id of endpointId.values()) {
-        axiosSignalingBridge.destroyPeerConnection(id, groupId)
+    for(let i = 0; i < endpointId.length; i++) {
+        axiosSignalingBridge.destroyPeerConnection(endpointId[i], groupId);
+        let memberName = memberNameIdMap.get(endpointId[i]);
+        groupManager.getGroup(groupId).deleteMember(memberName);
     }
 
-    let res = await axios.delete(`${config.webStreamer.SERVER}/muti-points/endpoint`, {
+/*    let res = await axios.delete(`${config.webStreamer.SERVER}/muti-points/endpoint`, {
         id: groupId,
         endpoint: endpointId
-    });
-    ctx.status = res.status;
-    ctx.statusMessage = res.statusText;
+    });*/
+
+    ctx.status = 200;
+
+/*    ctx.status = res.status;
+    ctx.statusMessage = res.statusText;*/
 }
 
 async function setMultiPointSpeaker(ctx, next) {

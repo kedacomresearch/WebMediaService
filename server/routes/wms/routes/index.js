@@ -53,17 +53,23 @@ router.get('/signalingBridge/:connectionId', async (ctx, next) => {
     ctx.status = 200;
 });
 
+router.get('/ptt/groups', async (ctx, next) => {
+    let groups = groupManager.getGroups();
+    ctx.status = 200;
+    ctx.body = groups;
+});
+
 router.get('/ptt/group/members/:groupId', async (ctx, next) => {
     let groupId = ctx.params.groupId;
     console.log('groupId: ' + groupId);
 
     let group = groupManager.getGroup(Number(groupId));
-    let groupMember = [];
-    for(let [key,value] of group.entries()) {
-        value['name'] = key;
-        groupMember.push(value);
+    let groupMember = [],
+        members = group.getMembers();
+    for(let key in members) {
+        groupMember.push(members[key]);
     }
-    ctx.body = {groupMember: groupMember};
+    ctx.body = groupMember;
     ctx.status = 200;
 });
 
